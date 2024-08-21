@@ -3,11 +3,51 @@ import math
 import numpy as np
 
 import cupy as cp
-from cudipy.segment._icm_kernels import (
-    _get_icm_prob_class_kernel,
-    _get_icm_weights,
-)
+from numba import cuda
 from cudipy._utils import get_array_module
+
+
+dx_cont = np.array([-1, 0, 0, 0,  0, 1], np.int32)
+dy_cont = np.array([0, -1, 0, 1,  0, 0], np.int32)
+dz_cont = np.array([0,  0, 1, 0, -1, 0], np.int32)
+
+@cuda.jit()
+def _pcgn_kernel(seg, beta, classid, P_L_N):
+    nx, ny, nz = seg.shape
+
+    dX = cuda.const.array_like(dx_cont)
+    dY = cuda.const.array_like(dy_cont)
+    dZ = cuda.const.array_like(dz_cont)
+
+    x, y = cuda.grid(2)
+    
+    if x < nx and y < ny:
+        for z in range(cuda.threadIdx.x, nz, cuda.blockDim.x):
+            vox_prob = 0.0
+
+            for i in range(6):
+                xx = x + dX[i]
+                if xx < 0 or xx >= nx:
+                    continue
+                yy = y + dY[i]
+                if yy < 0 or yy >= ny:
+                    continue
+                zz = z + dZ[i]
+                if zz < 0 or zz >= nz:
+                    continue
+
+                if seg[xx, yy, zz] == classid:
+                    vox_prob -= beta
+                else:
+                    vox_prob += beta
+
+            P_L_N[x, y, z] = vox_prob
+
+
+def _prob_class_given_neighb(seg, beta, classid, P_L_N):
+    nx, ny, nz = seg.shape
+    _pcgn_kernel[(nx, ny), nz](seg, beta, classid, P_L_N)
+    cuda.synchronize()
 
 
 class ConstantObservationModel(object):
@@ -348,12 +388,8 @@ class IteratedConditionalModes(object):
 
         p_l_n = xp.empty(seg.shape, dtype=float_dtype)
 
-        icm_weights = _get_icm_weights(seg.ndim, beta, float_dtype)
-        int_type = "size_t" if seg.size > 1 << 31 else "int"
-        prob_kernel = _get_icm_prob_class_kernel(icm_weights.shape, int_type)
-
         for classid in range(nclasses):
-            prob_kernel(seg, icm_weights, classid, p_l_n)
+            _prob_class_given_neighb(seg, beta, classid, p_l_n)
             energies[classid, ...] = p_l_n + nloglike[classid, ...]
 
         # The code below is equivalent, but more efficient than:
@@ -394,18 +430,11 @@ class IteratedConditionalModes(object):
             voxel.
         """
         xp = get_array_module(seg)
-        p_l_n = xp.empty(seg.shape, dtype=float_dtype)
-
-        icm_weights = _get_icm_weights(seg.ndim, beta, float_dtype)
-        int_type = "size_t" if seg.size > 1 << 31 else "int"
-        prob_kernel = _get_icm_prob_class_kernel(icm_weights.shape, int_type)
-
         PLN = xp.zeros((nclasses,) + seg.shape, dtype=float_dtype)
 
         for classid in range(nclasses):
-            prob_kernel(seg, icm_weights, classid, p_l_n)
-            xp.exp(-p_l_n, out=p_l_n)
-            PLN[classid, ...] = p_l_n
+            _prob_class_given_neighb(seg, beta, classid, PLN[classid, ...])
+            xp.exp(-PLN[classid, ...], out=PLN[classid, ...])
 
         PLN /= PLN.sum(0, keepdims=True)
 

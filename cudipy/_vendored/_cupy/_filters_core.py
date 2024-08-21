@@ -8,7 +8,7 @@ import warnings
 import numpy
 import cupy
 
-from cupy.core import internal
+from cupy._core import internal
 from cudipy._vendored._cupy import _util
 
 

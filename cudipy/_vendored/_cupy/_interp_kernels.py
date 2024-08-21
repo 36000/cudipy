@@ -4,7 +4,7 @@ vendored copy of cupyx/scipy/ndimage/_interp_kernels.py
 import numpy
 
 import cupy
-import cupy.core.internal
+import cupy._core.internal
 
 from cupyx.scipy.ndimage import _spline_prefilter_core
 from cupyx.scipy.ndimage import _spline_kernel_weights
