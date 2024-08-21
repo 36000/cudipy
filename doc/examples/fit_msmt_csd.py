@@ -78,12 +78,9 @@ mask_csf *= csf
 nvoxels_wm = np.sum(mask_wm)
 nvoxels_gm = np.sum(mask_gm)
 nvoxels_csf = np.sum(mask_csf)
-print(nvoxels_wm)
-print(nvoxels_gm)
-print(nvoxels_csf)
-print(f"Final CSF volume size: {np.sum(csf)}")
-print(f"Final GM volume size: {np.sum(gm)}")
-print(f"Final WM volume size: {np.sum(wm)}")
+print(f"Final CSF volume size: {nvoxels_csf}")
+print(f"Final GM volume size: {nvoxels_gm}")
+print(f"Final WM volume size: {nvoxels_wm}")
 
 response_wm, response_gm, response_csf = response_from_mask_msmt(
     gtab, data, mask_wm, mask_gm, mask_csf
