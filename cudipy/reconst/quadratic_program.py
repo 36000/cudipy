@@ -404,7 +404,7 @@ def init_point(Q, A, b, x0):
 def gen_lt_idx(n):
     return np.vstack(np.tril_indices(n)).T
 
-def fit(self, data, use_pinned_memory=False):
+def fit(self, data, use_mapped_memory=False):
     m, n = self.fitter._reg.shape
     coeff = np.zeros((*data.shape[:3], n))
 
@@ -429,21 +429,21 @@ def fit(self, data, use_pinned_memory=False):
     y0 = cuda.to_device(y0)
     l0 = cuda.to_device(l0)
 
-    if use_pinned_memory:
-        c = cuda.pinned_array((*data.shape[:3], n))
-        y = cuda.pinned_array((*data.shape[:3], m))
-        l = cuda.pinned_array((*data.shape[:3], m))
-        dx = cuda.pinned_array((*data.shape[:3], n))
-        dy = cuda.pinned_array((*data.shape[:3], m))
-        dl = cuda.pinned_array((*data.shape[:3], m))
-        rhs1 = cuda.pinned_array((*data.shape[:3], n))
-        rhs2 = cuda.pinned_array((*data.shape[:3], m))
-        Z = cuda.pinned_array((*data.shape[:3], m))
+    if use_mapped_memory:
+        c = cuda.mapped_array((*data.shape[:3], n))
+        y = cuda.mapped_array((*data.shape[:3], m))
+        l = cuda.mapped_array((*data.shape[:3], m))
+        dx = cuda.mapped_array((*data.shape[:3], n))
+        dy = cuda.mapped_array((*data.shape[:3], m))
+        dl = cuda.mapped_array((*data.shape[:3], m))
+        rhs1 = cuda.mapped_array((*data.shape[:3], n))
+        rhs2 = cuda.mapped_array((*data.shape[:3], m))
+        Z = cuda.mapped_array((*data.shape[:3], m))
 
-        schur = cuda.pinned_array((*data.shape[:3], n, n))
-        cgr = cuda.pinned_array((*data.shape[:3], n))
-        cgp = cuda.pinned_array((*data.shape[:3], n))
-        cgAp = cuda.pinned_array((*data.shape[:3], n))
+        schur = cuda.mapped_array((*data.shape[:3], n, n))
+        cgr = cuda.mapped_array((*data.shape[:3], n))
+        cgp = cuda.mapped_array((*data.shape[:3], n))
+        cgAp = cuda.mapped_array((*data.shape[:3], n))
     else:
         c = cuda.device_array((*data.shape[:3], n))
         y = cuda.device_array((*data.shape[:3], m))
