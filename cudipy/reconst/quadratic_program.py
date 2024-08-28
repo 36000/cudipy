@@ -404,7 +404,7 @@ def init_point(Q, A, b, x0):
 def gen_lt_idx(n):
     return np.vstack(np.tril_indices(n)).T
 
-def fit(self, data, use_mapped_memory=False):
+def fit(self, data, use_mapped_memory=False, num_batch=1):
     m, n = self.fitter._reg.shape
     coeff = np.zeros((*data.shape[:3], n))
 
@@ -429,49 +429,54 @@ def fit(self, data, use_mapped_memory=False):
     y0 = cuda.to_device(y0)
     l0 = cuda.to_device(l0)
 
+    step_size = data.shape[0]//num_batch
+    batched_ds = (step_size, data.shape[1], data.shape[2])
     if use_mapped_memory:
-        c = cuda.mapped_array((*data.shape[:3], n))
-        y = cuda.mapped_array((*data.shape[:3], m))
-        l = cuda.mapped_array((*data.shape[:3], m))
-        dx = cuda.mapped_array((*data.shape[:3], n))
-        dy = cuda.mapped_array((*data.shape[:3], m))
-        dl = cuda.mapped_array((*data.shape[:3], m))
-        rhs1 = cuda.mapped_array((*data.shape[:3], n))
-        rhs2 = cuda.mapped_array((*data.shape[:3], m))
-        Z = cuda.mapped_array((*data.shape[:3], m))
+        c = cuda.mapped_array((*batched_ds, n))
+        y = cuda.mapped_array((*batched_ds, m))
+        l = cuda.mapped_array((*batched_ds, m))
+        dx = cuda.mapped_array((*batched_ds, n))
+        dy = cuda.mapped_array((*batched_ds, m))
+        dl = cuda.mapped_array((*batched_ds, m))
+        rhs1 = cuda.mapped_array((*batched_ds, n))
+        rhs2 = cuda.mapped_array((*batched_ds, m))
+        Z = cuda.mapped_array((*batched_ds, m))
 
-        schur = cuda.mapped_array((*data.shape[:3], n, n))
-        cgr = cuda.mapped_array((*data.shape[:3], n))
-        cgp = cuda.mapped_array((*data.shape[:3], n))
-        cgAp = cuda.mapped_array((*data.shape[:3], n))
+        schur = cuda.mapped_array((*batched_ds, n, n))
+        cgr = cuda.mapped_array((*batched_ds, n))
+        cgp = cuda.mapped_array((*batched_ds, n))
+        cgAp = cuda.mapped_array((*batched_ds, n))
     else:
-        c = cuda.device_array((*data.shape[:3], n))
-        y = cuda.device_array((*data.shape[:3], m))
-        l = cuda.device_array((*data.shape[:3], m))
-        dx = cuda.device_array((*data.shape[:3], n))
-        dy = cuda.device_array((*data.shape[:3], m))
-        dl = cuda.device_array((*data.shape[:3], m))
-        rhs1 = cuda.device_array((*data.shape[:3], n))
-        rhs2 = cuda.device_array((*data.shape[:3], m))
-        Z = cuda.device_array((*data.shape[:3], m))
+        c = cuda.device_array((*batched_ds, n))
+        y = cuda.device_array((*batched_ds, m))
+        l = cuda.device_array((*batched_ds, m))
+        dx = cuda.device_array((*batched_ds, n))
+        dy = cuda.device_array((*batched_ds, m))
+        dl = cuda.device_array((*batched_ds, m))
+        rhs1 = cuda.device_array((*batched_ds, n))
+        rhs2 = cuda.device_array((*batched_ds, m))
+        Z = cuda.device_array((*batched_ds, m))
 
-        schur = cuda.device_array((*data.shape[:3], n, n))
-        cgr = cuda.device_array((*data.shape[:3], n))
-        cgp = cuda.device_array((*data.shape[:3], n))
-        cgAp = cuda.device_array((*data.shape[:3], n))
+        schur = cuda.device_array((*batched_ds, n, n))
+        cgr = cuda.device_array((*batched_ds, n))
+        cgp = cuda.device_array((*batched_ds, n))
+        cgAp = cuda.device_array((*batched_ds, n))
 
     data = cuda.to_device(data)
     coeff = cuda.to_device(coeff)
     lt_ifx = cuda.to_device(gen_lt_idx(n))
 
-    parallel_qp_fit[
-    #    (2, 2, 2), 64,
-        data.shape[:3], 64,
-        0, 0](
-            Rt, R_pinv, Q, A, b, x0, y0, l0, data, coeff, lt_ifx, 
-            c, y, l, dx, dy, dl, rhs1, rhs2, Z, schur, cgr, cgp, cgAp)
+    for ii in range(0, data.shape[0], step_size):
+        parallel_qp_fit[
+            (step_size, data.shape[1], data.shape[2]), 64,
+            0, 0](
+                Rt, R_pinv, Q, A, b, x0, y0, l0,
+                data[ii:ii+step_size], coeff[ii:ii+step_size],
+                lt_ifx, 
+                c, y, l, dx, dy, dl, rhs1, rhs2, Z, schur,
+                cgr, cgp, cgAp)
 
-    cuda.current_context().synchronize()
+        cuda.current_context().synchronize()
     coeff = coeff.copy_to_host()
-    
+
     return MSDeconvFit(self, coeff, None)
