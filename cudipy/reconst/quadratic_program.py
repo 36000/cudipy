@@ -16,14 +16,13 @@ from dipy.reconst.mcsd import MSDeconvFit
 
 # constants
 cp=0.9
-max_iter=1000
-tol=1e-6
 tau=0.95
 
 
 @cuda.jit(max_registers=64)
 def parallel_qp_fit(Rt, R_pinv, G, A, b, x0, y0, l0, data, results, lt_ifx,
-                    c, y, l, dx, dy, dl, rhs1, rhs2, Z, schur, cgr, cgp, cgAp):
+                    c, y, l, dx, dy, dl, rhs1, rhs2, Z, schur, cgr, cgp, cgAp,
+                    tol, max_iter):
     '''
     Solves 1/2*x^t*G*x+(Rt*d)^t*x given Ax>=b
     In MSMT, G, R, A, b are the same across voxels,
@@ -404,7 +403,9 @@ def init_point(Q, A, b, x0):
 def gen_lt_idx(n):
     return np.vstack(np.tril_indices(n)).T
 
-def fit(self, data, use_mapped_memory=False, num_batch=1):
+def fit(self, data,
+        use_mapped_memory=False, num_batch=1,
+        max_iter=1000, tol=1e-6):
     m, n = self.fitter._reg.shape
     coeff = np.zeros((*data.shape[:3], n))
 
@@ -474,7 +475,7 @@ def fit(self, data, use_mapped_memory=False, num_batch=1):
                 data[ii:ii+step_size], coeff[ii:ii+step_size],
                 lt_ifx, 
                 c, y, l, dx, dy, dl, rhs1, rhs2, Z, schur,
-                cgr, cgp, cgAp)
+                cgr, cgp, cgAp, tol, max_iter)
 
         cuda.current_context().synchronize()
     coeff = coeff.copy_to_host()
